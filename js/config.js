@@ -130,10 +130,20 @@ window.DFW = window.DFW || {};
      * placard, and a printed QR is permanent: rename the host or the path and
      * every door sign is orphaned.
      *
-     * Local only for now. Do not print anything off a localhost URL - it
+     * LIVE as of 2026-07-31 on public GitHub Pages, repo blancomat9-dev/room-board,
+     * served from main at root. 44 characters, comfortably inside the placard
+     * view's 100-char warning, and short enough to encode as a sparse QR that
+     * scans in trailer lighting.
+     *
+     * Renaming the repo or the account changes this URL and orphans every
+     * placard already on a door. It is still free to change TODAY, because
+     * nothing has been printed yet. After the first print run it is not.
+     *
+     * For local testing, serve.ps1 still runs on http://localhost:8081/ - just
+     * do not print anything while this line says localhost, because that URL
      * resolves to the phone itself, not to this machine.
      */
-    PUBLIC_URL: 'http://localhost:8081/',
+    PUBLIC_URL: 'https://blancomat9-dev.github.io/room-board/',
 
     /* ---- The shared board ------------------------------------------------ */
     /*
