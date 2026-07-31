@@ -1,0 +1,77 @@
+# Keeps the Supabase project awake.
+#
+# WHY THIS EXISTS
+#
+# A Supabase free-tier project is paused after ~7 days with no database
+# requests, and waking it needs somebody to log into the dashboard by hand.
+# This board's whole design is a QR screwed to a door, so the failure mode is
+# specific and bad: one quiet week - a holiday, a slow stretch - and the first
+# person to scan on Monday morning gets a dead board. They are also the one
+# person who cannot fix it.
+#
+# Normal use already prevents this, because every scan of the QR fires a read
+# at the REST API and that counts as activity. This job exists purely to cover
+# the weeks when nobody uses the room.
+#
+# A recurring MEETING does not help, which is worth writing down because it is
+# the obvious guess. Supabase counts database REQUESTS, not rows. A booking
+# sitting in the table is not traffic - nothing is asking for it.
+#
+# ---------------------------------------------------------------------------
+# THE KEY BELOW IS DELIBERATELY NOT A SECRET
+#
+# It is the Supabase `anon` key, and it is already served to the public in
+# js/config.js on every page load of this site. Putting it in a GitHub secret
+# would hide it from nobody and add a setup step that a future person has to
+# discover. What protects the database is the row level security in
+# backend/schema.sql (no deletes, no editing anyone else's booking), not
+# secrecy of this string.
+#
+# The `service_role` / `secret` key is a completely different thing. It
+# bypasses RLS and must never appear in this repository.
+# ---------------------------------------------------------------------------
+#
+# KNOWN LIMITATION, DO NOT LEARN THIS THE HARD WAY
+#
+# GitHub disables scheduled workflows on a repository with no activity for 60
+# days. If nobody pushes to this repo for two months, this job stops silently
+# and the pause problem comes back with no warning. Re-enable it from the
+# Actions tab, or push any commit. Check the Actions tab occasionally.
+
+name: Keep Supabase awake
+
+on:
+  schedule:
+    # 13:17 UTC daily. Deliberately not on the hour: GitHub's scheduler is
+    # heavily oversubscribed at :00 and jobs there are delayed or dropped.
+    # Daily is far more often than needed against a 7-day window, which is the
+    # point - it can miss several runs and still work.
+    - cron: '17 13 * * *'
+  workflow_dispatch:        # so it can be run by hand from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read one row from the bookings table
+        run: |
+          URL='https://ozlzqqruytpeqtgsdkwq.supabase.co'
+          KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im96bHpxcXJ1eXRwZXF0Z3Nka3dxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTc3NjQsImV4cCI6MjEwMTA3Mzc2NH0.oC9AOYFJ5ptZO6YcmLwC56oi4bkUBBoviLXA9Ayq_7Y'
+
+          # A real query against a real table. Hitting the project root would
+          # return 200 from the API gateway without touching Postgres, which
+          # would keep this job green while the database quietly slept - the
+          # exact "test that cannot fail" this is supposed to avoid.
+          code=$(curl -sS -o /tmp/out.json -w '%{http_code}' \
+            -H "apikey: $KEY" \
+            -H "Authorization: Bearer $KEY" \
+            "$URL/rest/v1/bookings?select=id&limit=1")
+
+          echo "HTTP $code"
+          echo "body: $(cat /tmp/out.json)"
+
+          if [ "$code" != "200" ]; then
+            echo "::error::Supabase did not answer 200. The project may be paused already, or the key may have been rotated."
+            exit 1
+          fi
+          echo "Database answered. Inactivity timer reset."
