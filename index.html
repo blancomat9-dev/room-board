@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Conference Room</title>
+<link rel="stylesheet" href="css/app.css">
+<script>
+/* Theme applied BEFORE first paint, which is the only reason this sits inline
+   in the head instead of in app.js. Setting html.dark after the scripts load
+   means a dark-mode user gets a white flash on every load - on a phone in a
+   dim trailer that is exactly what they turned dark mode on to avoid.
+
+   Light is the default, matching MB008. No prefers-color-scheme fallback on
+   purpose: the button is the setting, and a board that changes colour by
+   itself at sunset because the phone flipped is a support question nobody
+   wants to answer. */
+(function () {
+  try {
+    if (window.localStorage.getItem('mb015-dark') === '1') {
+      document.documentElement.className = 'dark';
+    }
+  } catch (e) {}      /* private mode throws on read; light is a fine default */
+})();
+</script>
+</head>
+<body>
+
+<a class="skip" href="#view">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="topbar-main">
+      <div class="brand">
+        <b>CONFERENCE ROOM</b>
+        <em>Job-site trailer</em>
+      </div>
+      <nav class="nav" id="nav" aria-label="Views"></nav>
+    </div>
+    <button class="themebtn" id="themebtn" type="button" aria-pressed="false"
+            title="Switch to dark" aria-label="Switch to dark colours">&#9790;</button>
+  </div>
+</header>
+
+<!-- app.js REWRITES this at boot to match the store that actually loaded. Do not
+     hard-code a claim about syncing here: on 2026-07-29 this line said "stored
+     in this browser" for hours after that stopped being the whole story, and a
+     stale reassurance is worse than none (vault CLAUDE.md section 12).
+     The text below is the conservative case - what is true if JS never runs. -->
+<div class="protonote" id="protonote">
+  <strong>Prototype.</strong> Not in service yet.
+</div>
+
+<main id="view" tabindex="-1"></main>
+
+<footer class="foot">
+  <span>MB015 &middot; Conference room board</span>
+  <span aria-hidden="true">/</span>
+  <span>No sign-in, so names are self-reported</span>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Load order matters: each file reads the namespaces below it at definition
+     time, so moving one up breaks it silently. -->
+<script src="js/config.js"></script>
+<script src="js/qrcode.js"></script>
+<script src="js/util.js"></script>
+<script src="js/state.js"></script>
+<script src="js/store.js"></script>
+<!-- AFTER store.js, not instead of it. store.js stays the offline path and is
+     what the three harnesses drive directly; this only adds a second store that
+     app.js picks when CONFIG.SUPABASE is filled in. -->
+<script src="js/store-supabase.js"></script>
+<script src="js/seed.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/views-day.js"></script>
+<script src="js/views-week.js"></script>
+<script src="js/views-month.js"></script>
+<script src="js/views-book.js"></script>
+<script src="js/views-placard.js"></script>
+<script src="js/views-data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,832 @@
+/* ==========================================================================
+   MB015 - Conference Room Board
+
+   Mobile FIRST, not mobile-also. The whole audience is a phone held in one
+   hand in a doorway, often in bad trailer lighting, by someone who is late.
+   Desktop is the afterthought here, which is the reverse of MB016.
+
+   PALETTE: the MB008 Loenbro project-map colorway, adopted 2026-07-30 so the
+   two apps read as one system. Light is the default, exactly as MB008 ships
+   it; the moon button flips to MB008's dark v8 colorway and the choice sticks
+   in localStorage.
+
+   Tokens are lifted verbatim from Loenbro-Project-Map.html. Do not "improve"
+   a hex here on its own - if one moves, it moves in both apps or they stop
+   matching, which is the entire reason for reusing it.
+   ========================================================================== */
+
+:root {
+  /* ---- MB008 deck palette, light (the corporate deck colorway) ----------
+     SOFTENED 2026-07-30 on Matias's call: "dont have hard colors make them
+     softer". The accent moved from the deck's deep brick #A93226 to its
+     lighter sibling #B4574E, which is still an MB008 token, so the two
+     stylesheets stay diffable. Everything else here is unchanged. */
+  --orange:   #B4574E;   /* soft brick: the accent, and what "selected" means */
+  --navy:     #1B4A7E;
+  --bg:       #FAF8F4;   /* organic white ground */
+  --panel:    #FFFFFF;
+  --panel2:   #F1EEE8;
+  --ink:      #1B4A7E;
+  --muted:    #5E7188;
+  --line:     #D9D4CB;
+
+  /* Ink for anything sitting ON an --orange fill. Split from --panel because
+     in dark mode the orange gets bright enough that white text on it fails
+     contrast and near-black passes - see the html.dark block. */
+  --on-orange: #FFFFFF;
+
+  /* Deck category hues, reused as state hues so the board and the map draw
+     from one box of crayons: teal, gold, brick, steel blue, slate. */
+  --teal:     #2E8C86;
+  --gold:     #D9A441;
+  --brick-lt: #B4574E;
+  --steel:    #6E8FBB;
+  --slate:    #4A5568;
+
+  /* "Somebody already has this slot", on a chip. Split from --orange so the
+     two can never be confused: --orange is what YOU picked, --busy is what is
+     already taken, and with the accent softened to brick they would otherwise
+     have landed on the same hue. Muted on purpose - an unavailable slot is a
+     fact, not an alarm. Measures 5.68:1 on --panel. */
+  --busy:     #8C5A51;
+  /* Error text. --orange measures 4.08:1 on --panel2 and does not clear 4.5.
+     Error copy is the last thing that should be hard to read. This is 6.98. */
+  --bad-ink:  #8C3226;
+
+  --f-display: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --radius: 8px;
+  --shadow: 0 1px 2px rgba(27, 74, 126, .10), 0 6px 18px -8px rgba(27, 74, 126, .22);
+  --maxw: 820px;
+
+  /* 44px is the smallest thing a thumb hits reliably. Nothing tappable in
+     this app is allowed to be smaller. */
+  --tap: 44px;
+}
+
+/* ==========================================================================
+   STATE COLOURS
+
+   state.js returns a KEY and nothing else. The key lands on the element as
+   data-state, and these rules supply the three custom properties every
+   coloured surface reads. That indirection is what lets the theme toggle
+   repaint a card that has already been drawn.
+
+   SOFTENED 2026-07-30. Light mode was solid saturated fills with white ink -
+   a board of full-strength teal, navy and brick blocks. Asked for softer, so
+   every light fill is now a pale tint of its own hue carrying dark ink, and
+   the SPINE keeps the full-strength colour.
+
+   That is the whole trick, and it is why this is not a return to the pastel
+   washes that were rejected on 2026-07-29 for being indistinguishable at arm's
+   length. Back then the wash was the only signal. Now the 6px spine down the
+   left of every card and the 4px one on every timeline block are still fully
+   saturated, so state is legible across a trailer while the surface itself
+   stays quiet.
+
+   The one relationship the palette must preserve:
+
+     IN USE        teal tint, TEAL spine  - fine, on schedule
+     MAY RUN LONG  teal tint, GOLD spine  - fine, past the slot, declared
+
+   Same fill, because declared overtime IS legitimate occupancy; only the spine
+   changes. Asserted in selftest section Z, not eyeballed.
+
+   RUNNING_OVER is GONE - the state was removed from state.js the same day, so
+   a rule for it here would be dead weight that looked load-bearing.
+
+   Every ink below is >= 4.5:1 on its own fill. MEASURED, not asserted in prose:
+   selftest section Z now computes the WCAG ratio from these very tokens at run
+   time and fails under 4.5, and the function itself is sanity-checked against
+   black-on-white (21:1) and a colour on itself (1:1) so it cannot pass by
+   always returning a big number.
+
+   Light:  teal 6.82, brick 6.93, navy 8.62, grey 5.25.
+   Dark:   teal 7.56, coral 7.12, steel 7.02, grey 4.78.
+   ========================================================================== */
+
+[data-state="IN_USE"]       { --st-bg:#E6F2F0; --st-fg:#1E5B56; --st-accent:#2E8C86; }
+[data-state="MAY_RUN_LONG"] { --st-bg:#E6F2F0; --st-fg:#1E5B56; --st-accent:#D9A441; }
+[data-state="CONFLICT"]     { --st-bg:#FBEAE7; --st-fg:#8C3226; --st-accent:#B4574E; }
+[data-state="UPCOMING"]     { --st-bg:#ECF1F8; --st-fg:#26456B; --st-accent:#6E8FBB; }
+[data-state="ENDED"]        { --st-bg:#F2F0EC; --st-fg:#5C6470; --st-accent:#A8AEB7; }
+[data-state="CANCELLED"]    { --st-bg:#F2F0EC; --st-fg:#5C6470; --st-accent:#BCC1C8; }
+[data-state="DONE"]         { --st-bg:#F2F0EC; --st-fg:#5C6470; --st-accent:#BCC1C8; }
+[data-state="TAKEN_OVER"]   { --st-bg:#F2F0EC; --st-fg:#5C6470; --st-accent:#B4574E; }
+[data-state="FREE"]         { --st-bg:#E6F2F0; --st-fg:#1E5B56; --st-accent:#2E8C86; }
+
+/* ==========================================================================
+   DARK: MB008's original v8 colorway, restored by the same class name it uses
+   there (html.dark) so the two files stay diffable.
+   ========================================================================== */
+
+html.dark {
+  /* MB008 ships #f05a28 here, a genuinely hot orange. Cooled to a soft coral
+     to match the same instruction the light palette got. */
+  --orange:   #E8845F;
+  --navy:     #eef1f4;
+  --bg:       #191b1e;
+  --panel:    #222528;
+  --panel2:   #2a2e33;
+  --ink:      #eef1f4;
+  --muted:    #9aa5b1;
+  --line:     #3a4046;
+
+  /* Both the old #f05a28 and this softer #E8845F are far too bright for white
+     text - white on them is around 3.4:1 and fails. Near-black is 6.5:1 and
+     passes. This is the reason --on-orange exists. */
+  --on-orange: #191b1e;
+
+  --teal:     #6FD3CA;
+  --gold:     #E8BC63;
+  --brick-lt: #FF8A5E;
+  --steel:    #7DB9FF;
+  --slate:    #9aa5b1;
+
+  --busy:     #D89A88;
+  --bad-ink:  #FF9E82;
+
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px -8px rgba(0,0,0,.65);
+}
+
+/* Dark inverts the relationship: deep tinted fill, BRIGHT ink. It was already
+   the soft one of the two colourways, so the 2026-07-30 softening barely
+   touched it - only the accent moved. Same hue family as the light counterpart
+   in every case, so a card people learned as teal stays teal. */
+html.dark [data-state="IN_USE"]       { --st-bg:#16342F; --st-fg:#6FD3CA; --st-accent:#2E8C86; }
+html.dark [data-state="MAY_RUN_LONG"] { --st-bg:#16342F; --st-fg:#6FD3CA; --st-accent:#D9A441; }
+html.dark [data-state="CONFLICT"]     { --st-bg:#3A2523; --st-fg:#FF9E82; --st-accent:#C96A4C; }
+html.dark [data-state="UPCOMING"]     { --st-bg:#1E2B3A; --st-fg:#7DB9FF; --st-accent:#3D7EC8; }
+html.dark [data-state="ENDED"]        { --st-bg:#24282D; --st-fg:#9AA5B1; --st-accent:#4A5568; }
+html.dark [data-state="CANCELLED"]    { --st-bg:#24282D; --st-fg:#8B939E; --st-accent:#6B7684; }
+html.dark [data-state="DONE"]         { --st-bg:#24282D; --st-fg:#8B939E; --st-accent:#6B7684; }
+html.dark [data-state="TAKEN_OVER"]   { --st-bg:#24282D; --st-fg:#8B939E; --st-accent:#C96A4C; }
+html.dark [data-state="FREE"]         { --st-bg:#16342F; --st-fg:#6FD3CA; --st-accent:#2E8C86; }
+
+/* ---------- Base ---------------------------------------------------------- */
+
+* { box-sizing: border-box; }
+/* Tells the browser to draw its OWN widgets to match - the native date picker,
+   scrollbars, focus rings. Without it the date field in the booking form stays
+   a white panel with black text in the middle of the dark board. */
+html { -webkit-text-size-adjust: 100%; color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.2; }
+a { color: var(--orange); }
+
+.sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.skip { position: absolute; left: -9999px; top: 0; z-index: 100;
+  background: var(--orange); color: #fff; padding: .6rem 1rem; font-weight: 600; }
+.skip:focus { left: 0; }
+
+:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
+
+/* ---------- Chrome -------------------------------------------------------- */
+/* MB008's header: panel ground, navy wordmark, brick tagline, 3px brick rule
+   under the whole thing. That rule is the app's signature - keep it. */
+
+.topbar {
+  background: var(--panel);
+  border-bottom: 3px solid var(--orange);
+}
+/* nowrap on purpose. With wrap the 40px theme button dropped onto its own row
+   under the nav and read as a fifth navigation item. It is a 40px fixed block
+   beside a min-width:0 flexible column, so it always fits. */
+.topbar-in {
+  max-width: var(--maxw); margin: 0 auto; padding: .6rem .9rem;
+  display: flex; align-items: flex-start; gap: .6rem; flex-wrap: nowrap;
+}
+.topbar-main { flex: 1 1 auto; min-width: 0; }
+
+.brand { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; line-height: 1; }
+.brand b {
+  font-family: "Arial Black", var(--f-display); font-weight: 900;
+  font-size: 1.15rem; letter-spacing: .12em; color: var(--navy);
+}
+.brand em {
+  font-style: normal; font-size: .68rem; font-weight: 600;
+  letter-spacing: .1em; color: var(--orange); text-transform: uppercase;
+}
+html.dark .brand b { color: #fff; }
+
+.nav { display: flex; gap: .15rem; margin-top: .5rem; overflow-x: auto; }
+.nav a {
+  color: var(--muted); text-decoration: none; font-size: .88rem; font-weight: 600;
+  padding: .5rem .7rem; border-radius: var(--radius); white-space: nowrap;
+}
+.nav a[aria-current="page"] { background: var(--panel2); color: var(--ink); }
+
+/* The theme toggle. Sits in the header rather than a settings page because it
+   is the only setting there is. */
+.themebtn {
+  flex: 0 0 auto;
+  width: 40px; height: 40px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--panel2);
+  color: var(--ink); font-size: 1.05rem; line-height: 1;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+
+.protonote {
+  background: var(--panel2); color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  padding: .5rem .9rem; font-size: .8rem;
+}
+.protonote strong { color: var(--orange); }
+
+main {
+  display: block; max-width: var(--maxw); margin: 0 auto;
+  padding: .9rem .9rem 3rem;
+}
+main:focus { outline: none; }
+
+.foot {
+  max-width: var(--maxw); margin: 0 auto; padding: 1rem .9rem 2rem;
+  color: var(--muted); font-size: .78rem;
+  display: flex; gap: .5rem; flex-wrap: wrap;
+}
+
+/* ---------- View heading -------------------------------------------------- */
+
+.viewhead { margin: .2rem 0 .9rem; }
+.viewhead h1 { font-family: var(--f-display); font-size: 1.7rem; letter-spacing: .01em; color: var(--ink); }
+.eyebrow {
+  display: flex; gap: .5rem; align-items: center; flex-wrap: wrap;
+  font-size: .76rem; color: var(--muted); margin-bottom: .3rem;
+}
+.eyebrow .tag {
+  background: var(--orange); color: #fff;
+  padding: .15rem .45rem; border-radius: 4px; font-weight: 800;
+  letter-spacing: .1em; text-transform: uppercase; font-size: .62rem;
+}
+
+/* ---------- Banner -------------------------------------------------------- */
+
+.banner {
+  border: 1px solid var(--line);
+  border-left: 8px solid var(--st-accent, var(--muted));
+  background: var(--st-bg, var(--panel));
+  color: var(--st-fg, var(--ink));
+  border-radius: var(--radius);
+  padding: 1rem 1rem 1.05rem;
+  box-shadow: var(--shadow);
+  margin-bottom: .9rem;
+}
+.banner-state {
+  font-family: var(--f-display);
+  font-size: 1.05rem; font-weight: 700; letter-spacing: .07em;
+}
+.banner-title { font-size: 1.35rem; font-weight: 700; margin-top: .25rem; }
+.banner-sub { font-size: .95rem; margin-top: .2rem; opacity: .88; }
+
+/* ---------- Cards --------------------------------------------------------- */
+
+.cardlist { display: flex; flex-direction: column; gap: .6rem; }
+
+/* The spine carries the state now, not the fill. With the fills softened to
+   tints (see STATE COLOURS) a card is a quiet tinted panel, so the 6px
+   saturated edge is what has to be readable across the room - do not thin it.
+   The hairline on the other three sides stops a pale card from dissolving into
+   the page ground, which is the failure the 2026-07-29 pastel attempt hit. */
+.card {
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--st-accent, var(--muted));
+  background: var(--st-bg, var(--panel));
+  color: var(--st-fg, var(--ink));
+  border-radius: var(--radius);
+  padding: .8rem .85rem;
+}
+
+.card-state {
+  font-family: var(--f-display);
+  font-size: .8rem; font-weight: 700; letter-spacing: .07em;
+  display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+}
+.card-title { font-size: 1.12rem; font-weight: 600; margin-top: .18rem; }
+.card-time { font-size: 1rem; margin-top: .1rem; }
+.card-buf {
+  display: inline-block; margin-left: .4rem;
+  border: 1px dashed currentColor; border-radius: 3px;
+  padding: 0 .35rem; font-size: .74rem; font-weight: 700;
+  opacity: .9;
+}
+/* The optional description. Quieter than the title and set off by a rule in
+   the card's own ink, so a long agenda reads as a block of detail rather than
+   as more headline. pre-line keeps the line breaks somebody typed - an agenda
+   is usually a list, and collapsing it into a paragraph destroys it. */
+.card-note {
+  font-size: .88rem; margin-top: .45rem; padding-left: .55rem;
+  border-left: 2px solid currentColor;
+  opacity: .82; white-space: pre-line;
+}
+.card-by { font-size: .85rem; margin-top: .3rem; opacity: .85; }
+
+.card.is-struck .card-title { text-decoration: line-through; opacity: .8; }
+
+/* PRIORITY and WEEKLY ride ALONGSIDE the state rather than replacing it, so
+   both need to read as separate marks on any fill. Outlined in the card's own
+   ink rather than a fixed colour: a solid brick badge disappears on the brick
+   CONFLICT fill, and those two genuinely can co-occur on the board even though
+   one booking cannot carry both. */
+.pri, .rep {
+  display: inline-flex; align-items: center; gap: .25rem;
+  border: 1.5px solid currentColor; border-radius: 3px;
+  padding: 0 .35rem;
+  font-size: .64rem; font-weight: 800; letter-spacing: .09em;
+  white-space: nowrap;
+}
+/* Outlined rather than filled, and NOT because filled looked worse. A solid
+   brick PRIORITY badge is invisible on the brick CONFLICT fill, and both
+   appear on the same board. Drawing it in the card's own ink means it can
+   never collide with the fill underneath it, whatever that fill becomes. */
+.pri { border-width: 2px; }
+
+.card-acts { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .7rem; }
+
+/* Cancel is the only action left on a card. Deliberately quiet: outlined in
+   the card's own ink, never a filled red button. It is a correction, not an
+   emergency, and a loud destructive-looking control on a board anyone can
+   reach invites tapping it to see what happens. */
+.btn-cancel {
+  background: transparent; color: inherit;
+  border-color: currentColor; opacity: .85;
+  font-size: .84rem; min-height: 38px; padding: .3rem .7rem;
+}
+.cancelbar {
+  display: flex; flex-wrap: wrap; gap: .4rem; align-items: center;
+  margin-top: .7rem; padding-top: .6rem;
+  border-top: 1px solid currentColor;
+}
+.cancelbar .q { font-size: .84rem; font-weight: 600; flex: 1 1 100%; }
+
+/* ---------- Calendar chrome ----------------------------------------------- */
+
+.calchrome { display: flex; flex-direction: column; gap: .55rem; margin-bottom: 1rem; }
+
+.segmented {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  background: var(--panel2); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 3px; gap: 3px;
+}
+.segmented a {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 40px; padding: .35rem .5rem;
+  color: var(--muted); text-decoration: none;
+  font-weight: 600; font-size: .92rem;
+  border-radius: 5px;
+}
+/* The selected view is the bright one. Same rule as the time chips: whatever
+   is chosen is orange, everything else recedes. */
+.segmented a[aria-current="page"] {
+  background: var(--orange); color: var(--on-orange);
+}
+
+.btn-book { width: 100%; }
+
+/* ---------- Chips ---------------------------------------------------------
+   The booking form is built almost entirely out of these. Nothing in it is
+   typed except the meeting title and a name.
+
+   Three visual jobs, and they must stay distinguishable at arm's length:
+     default   panel fill, muted ink        - free, tappable
+     .is-busy  --busy ink, DASHED border    - something is already booked here
+     .is-on    solid --orange fill          - what you picked
+
+   --busy is a separate token from --orange for exactly this reason. Once the
+   accent softened to brick on 2026-07-30 the two would otherwise have been the
+   same hue, and "taken" and "chosen" sitting next to each other in the same
+   colour is the one confusion this control cannot afford.
+
+   Both grids in the booking form - Start time and End time - are made of
+   these, so a chip is now the single control that whole form is built from.
+   ------------------------------------------------------------------------- */
+
+.chiprow { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .3rem; -webkit-overflow-scrolling: touch; }
+.chiprow .chip { flex: 0 0 auto; }
+
+.chipgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .4rem; }
+.chipgrid-3 { grid-template-columns: repeat(3, 1fr); }
+
+.chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 1px;
+  min-height: var(--tap); padding: .4rem .5rem;
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  font: inherit; font-size: .92rem; font-weight: 600;
+  cursor: pointer; text-align: center; line-height: 1.15;
+  -webkit-tap-highlight-color: transparent;
+}
+.chip small { font-size: .62rem; font-weight: 600; opacity: .7; letter-spacing: .03em; }
+
+.chip.is-on {
+  background: var(--orange); color: var(--on-orange);
+  border-color: var(--orange);
+  box-shadow: 0 2px 8px -3px rgba(180, 87, 78, .38);
+}
+html.dark .chip.is-on { box-shadow: 0 2px 8px -3px rgba(232, 132, 95, .40); }
+.chip.is-on small { opacity: .85; }
+
+/* Busy does NOT disable. Conflicts are shown, not blocked - booking over
+   something is allowed and gets flagged, and a person who needs that slot
+   anyway must still be able to take it. This only makes the cost visible
+   before the tap instead of after it. */
+.chip.is-busy {
+  border-color: var(--busy); border-style: dashed;
+  color: var(--busy);
+  background: var(--panel);
+}
+.chip.is-busy.is-on { color: var(--on-orange); background: var(--orange); border-style: solid; }
+
+/* Disabled and past are DIFFERENT marks and must stay so. Since the
+   no-overlap rule a taken slot is disabled, and if disabled also struck it
+   would be indistinguishable from a slot that has simply gone by - two
+   different reasons you cannot have it, with two different answers ("pick
+   another day" vs "pick a later time"). Struck is reserved for past. */
+.chip:disabled { opacity: .45; cursor: default; }
+.chip.is-past { opacity: .3; cursor: default; text-decoration: line-through; }
+
+/* The hour band the slot grid is showing, and the control to widen it. */
+.slotband {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: .5rem; margin: .1rem 0 .45rem;
+  font-size: .78rem; color: var(--muted);
+}
+/* position:relative is LOAD-BEARING, not decoration. The form scrolls the
+   chosen slot to the middle of this box using chip.offsetTop, and offsetTop is
+   measured from the nearest POSITIONED ancestor. Without it the chip measured
+   from the page instead, the scroll overshot by the height of everything above
+   the form, and the grid opened showing 1 PM while 9:45 AM sat selected and
+   invisible above it. */
+.slotwrap {
+  position: relative;
+  max-height: 15.5rem; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 2px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--panel2);
+}
+
+/* The live read-out of what has been chosen. This is the form's answer line -
+   it is the one thing that has to be readable without concentrating. */
+.readout {
+  background: var(--panel2); border: 1px solid var(--line);
+  border-left: 6px solid var(--orange);
+  border-radius: var(--radius); padding: .6rem .75rem; margin-bottom: .8rem;
+}
+.readout .r-when { font-family: var(--f-display); font-size: 1.25rem; font-weight: 700; letter-spacing: .02em; }
+.readout .r-day { font-size: .82rem; color: var(--muted); }
+.readout .r-extra { font-size: .8rem; color: var(--muted); margin-top: .2rem; }
+
+/* ---------- Timeline ------------------------------------------------------
+   Time drawn as space. The empty parts are the useful parts, so nothing here
+   may collapse whitespace to "save room" - the gaps ARE the answer. */
+
+.tl {
+  position: relative; display: flex; gap: 0;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: .5rem .5rem .5rem 0;
+  margin-bottom: 1rem; overflow: hidden;
+}
+.tl-gutter { position: relative; width: 3.6rem; flex: 0 0 3.6rem; }
+.tl-hourlabel {
+  position: absolute; right: .45rem; transform: translateY(-50%);
+  font-size: .7rem; color: var(--muted); white-space: nowrap;
+}
+.tl-body { position: relative; flex: 1 1 auto; }
+.tl-rule {
+  position: absolute; left: 0; right: 0; height: 1px;
+  background: var(--line); opacity: .6;
+}
+.tl-track { position: absolute; inset: 0; }
+
+.tl-block {
+  position: absolute;
+  background: var(--st-bg, var(--panel));
+  color: var(--st-fg, var(--ink));
+  /* The accent hairline round the other three sides is load-bearing since the
+     fills softened: a pale tint sitting on the white timeline panel has almost
+     no edge of its own, and a booking has to look like an object occupying
+     time, not a smudge. */
+  border: 1px solid var(--st-accent, var(--muted));
+  border-left: 4px solid var(--st-accent, var(--muted));
+  border-radius: 4px;
+  padding: 3px 6px;
+  overflow: hidden;
+  text-decoration: none;
+  display: flex; flex-direction: column; justify-content: flex-start;
+  /* Blocks butt against each other; the outline in the PANEL colour keeps two
+     adjacent meetings from reading as one long one. */
+  box-shadow: 0 0 0 1px var(--panel);
+  z-index: 2;
+}
+/* The declared-overrun tail. Hatched and translucent so it reads as "this MAY
+   spill here", never as a booking. Sits behind real blocks because a buffer
+   must never visually outrank an actual reservation. */
+.tl-buffer {
+  position: absolute; z-index: 1;
+  border-left: 4px dashed var(--st-accent, var(--muted));
+  border-radius: 0 4px 4px 0;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(217, 164, 65, .30) 0 5px,
+    rgba(217, 164, 65, 0) 5px 10px
+  );
+}
+
+.tl-block.is-faded { opacity: .6; }
+/* Thicker than the state spine so it reads as priority even in a 45px week
+   column, where the block is a bar and nothing else. */
+.tl-block.is-priority { border-left-width: 7px; border-left-color: var(--orange); }
+/* One line, clipped with an ellipsis, never wrapped. A 30-minute block is 27px
+   and a wrapped title renders its second line cut through the middle, which
+   reads as a rendering fault rather than a long meeting name. The full title is
+   in the block's title attribute and on the card below. */
+.tl-btitle {
+  font-size: .78rem; font-weight: 600; line-height: 1.15;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tl-btime { font-size: .68rem; opacity: .85; line-height: 1.15; }
+
+/* The now-line. Brick, full width, with a dot on the axis - it should be the
+   first thing the eye lands on, because "where am I in this day" is the
+   question the whole view exists to answer. */
+.tl-now { position: absolute; left: 0; right: 0; height: 2px; background: var(--orange); z-index: 3; }
+.tl-nowdot {
+  position: absolute; left: -4px; top: -3px;
+  width: 8px; height: 8px; border-radius: 50%; background: var(--orange);
+}
+
+.tl-compact { padding: 0; border: 0; background: none; border-radius: 0; margin: 0; }
+.tl-compact .tl-body { width: 100%; }
+.tl-compact .tl-block { box-shadow: 0 0 0 1px var(--panel); border-left-width: 3px; }
+
+/* ---------- Week grid ------------------------------------------------------ */
+
+.weekgrid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: .5rem .35rem .6rem;
+  margin-bottom: .9rem;
+}
+.wg-col {
+  display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+  text-decoration: none; color: var(--ink);
+  border-radius: 5px; padding: .25rem .12rem;
+}
+.wg-col.is-today { background: var(--panel2); }
+.wg-dow {
+  text-align: center; font-size: .62rem; font-weight: 700;
+  color: var(--muted); letter-spacing: .04em; text-transform: uppercase;
+}
+.wg-num { text-align: center; font-size: .88rem; font-weight: 700; line-height: 1.1; }
+.wg-col.is-today .wg-num { color: var(--orange); }
+.wg-count {
+  text-align: center; font-size: .56rem; color: var(--muted);
+  margin-top: 2px; line-height: 1.1;
+}
+
+.daynav { display: flex; gap: .4rem; margin-bottom: .7rem; }
+.daynav .btn { flex: 1 1 0; }
+
+/* Where the eye should land after tapping a timeline block. */
+.card.is-focus { box-shadow: 0 0 0 3px var(--orange); }
+
+/* ---------- Month --------------------------------------------------------- */
+
+.monthnav { display: flex; gap: .4rem; margin-bottom: .6rem; }
+.monthnav .btn { flex: 1 1 0; min-height: 38px; font-size: .84rem; padding: .3rem .4rem; }
+.btn-sm { min-height: 38px; font-size: .84rem; padding: .3rem .6rem; }
+
+.monthgrid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px;
+  margin-bottom: 1.1rem;
+}
+
+.mg-dow {
+  text-align: center; font-size: .68rem; font-weight: 700;
+  color: var(--muted); letter-spacing: .06em; padding: .2rem 0 .1rem;
+}
+
+/* Cells stay square-ish and never shrink below a thumb. Content is a date and
+   dots only - the moment a title goes in here the grid stops working at 390px,
+   which is why WEEK exists. */
+.mg-day {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-height: 46px; padding: .28rem .1rem .3rem;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink); text-decoration: none;
+}
+.mg-day.is-out { opacity: .38; }
+.mg-day.is-today { border-color: var(--orange); border-width: 2px; }
+.mg-day.is-today .mg-num { color: var(--orange); font-weight: 800; }
+.mg-day.is-sel { background: var(--orange); border-color: var(--orange); }
+.mg-day.is-sel .mg-num, .mg-day.is-sel .mg-more { color: var(--on-orange); }
+
+.mg-num { font-size: .82rem; font-weight: 600; line-height: 1.1; }
+.mg-dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; min-height: 6px; }
+/* The dot reads its colour from the same data-state block as the cards, which
+   is what stopped the month and the day view disagreeing about what colour a
+   meeting is. */
+.mg-dot { width: 6px; height: 6px; border-radius: 50%; display: block; background: var(--st-accent, var(--muted)); }
+.mg-day.is-sel .mg-dot { box-shadow: 0 0 0 1px var(--on-orange); }
+.mg-more { font-size: .6rem; color: var(--muted); line-height: 1; }
+
+.daysel { margin-top: .2rem; }
+
+/* ---------- Week ---------------------------------------------------------- */
+
+.week { display: flex; flex-direction: column; gap: 1.1rem; }
+
+.day-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: .5rem; padding-bottom: .35rem; margin-bottom: .5rem;
+  border-bottom: 2px solid var(--line);
+}
+.day-name { font-family: var(--f-display); font-size: 1.05rem; font-weight: 700; letter-spacing: .03em; }
+.day-count { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+
+.day.is-today .day-head { border-bottom-color: var(--orange); }
+.day.is-today .day-name { color: var(--orange); }
+
+.day-empty { color: var(--muted); font-size: .9rem; padding: .2rem 0 .4rem; }
+
+/* ---------- Panels, notes, buttons ---------------------------------------- */
+
+.panel {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: .9rem;
+}
+.panel-head {
+  display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap;
+  padding: .7rem .85rem; border-bottom: 1px solid var(--line);
+}
+.panel-head h2 { font-family: var(--f-display); font-size: 1rem; letter-spacing: .04em; }
+.panel-head .sub { font-size: .8rem; color: var(--muted); }
+.panel-body { padding: .85rem; }
+
+.note {
+  background: var(--panel2); color: var(--ink);
+  border-left: 5px solid var(--navy);
+  border-radius: var(--radius); padding: .7rem .8rem; font-size: .88rem;
+  margin-bottom: .7rem;
+}
+html.dark .note { border-left-color: var(--steel); }
+.note-warn { border-left-color: var(--gold); }
+.note-bad { border-left-color: var(--bad-ink); color: var(--bad-ink); }
+.note .hint { margin-top: .35rem; }
+
+.empty {
+  background: var(--panel); border: 1px dashed var(--line);
+  border-radius: var(--radius); padding: 1.4rem .9rem;
+  text-align: center; color: var(--muted);
+}
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--tap); padding: .55rem 1rem;
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  font: inherit; font-weight: 600; font-size: .92rem;
+  text-decoration: none; cursor: pointer;
+}
+.btn-primary { background: var(--orange); border-color: var(--orange); color: var(--on-orange); }
+.btn-danger { background: var(--orange); border-color: var(--orange); color: var(--on-orange); }
+.btn-big { min-height: 52px; font-size: 1rem; flex: 1 1 auto; }
+.btn-quiet { background: transparent; color: var(--muted); }
+
+.cta-row { display: flex; gap: .5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.toolbar { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .8rem; }
+
+/* ---------- Forms --------------------------------------------------------- */
+
+.formgrid { display: flex; flex-direction: column; gap: .95rem; }
+.field { display: flex; flex-direction: column; gap: .35rem; }
+.field label, .fieldlabel {
+  font-size: .78rem; font-weight: 700; color: var(--muted);
+  letter-spacing: .07em; text-transform: uppercase;
+}
+.field .req { color: var(--orange); }
+.field input, .field select, .field textarea, .jsonbox {
+  min-height: var(--tap);
+  padding: .55rem .6rem;
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  font: inherit;
+  /* iOS Safari zooms the whole page when a focused field is under 16px. */
+  font-size: 16px;
+  width: 100%;
+}
+/* The description box. Vertical-only resize: `resize: both` lets a thumb drag
+   it wider than the page, which is a horizontal scrollbar on a form whose
+   whole brief is one-handed use. */
+.field textarea { resize: vertical; line-height: 1.45; }
+.jsonbox { min-height: 12rem; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.hint { font-size: .78rem; color: var(--muted); }
+
+/* Deliberately NOT a two-column grid at wider widths any more. The chip grids
+   inside these fields are sized for a phone column; side by side they read as
+   two unrelated controls and the slot grid loses its shape. */
+
+/* ---------- Toast --------------------------------------------------------- */
+
+.toast {
+  position: fixed; left: 50%; bottom: 1rem; transform: translate(-50%, 140%);
+  max-width: min(92vw, 30rem);
+  background: var(--navy); color: var(--bg);
+  padding: .7rem 1rem; border-radius: var(--radius);
+  font-size: .9rem; box-shadow: var(--shadow);
+  transition: transform .18s ease; z-index: 80;
+}
+html.dark .toast { background: var(--panel2); color: var(--ink); border: 1px solid var(--line); }
+.toast.on { transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .toast { transition: none; }
+}
+
+/* ==========================================================================
+   Placard
+
+   Sized in inches in SHARED css, not inside @media print. MB016 learned this
+   the hard way: sizing that only exists in the print block means the screen
+   preview and the paper disagree, and you find out after printing.
+
+   Hardcoded black on white, deliberately outside the theme. A door sign is
+   printed on white paper; letting the dark colorway reach it would produce a
+   sheet that is 90% toner and a QR code that will not scan.
+   ========================================================================== */
+
+/* The sheet is sized in inches and the QR box is a fixed 4.2in, which is wider
+   than a phone. Rather than let that push the whole page sideways, it scrolls
+   inside its own box. The page body itself must never scroll horizontally: the
+   brief is one hand in a doorway, and you cannot pinch-zoom one-handed.
+   Measured at 390, 360 and 320px - see overflowtest.html. */
+.placard-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+.placard {
+  background: #fff; color: #201f1e;
+  width: 7.7in;
+  margin: 0 auto; padding: .3in;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  text-align: center;
+  display: flex; flex-direction: column; align-items: center;
+  font-family: "Segoe UI", system-ui, Arial, sans-serif;
+}
+.placard-room { font-size: 52px; font-weight: 800; line-height: 1.05; color: #1B4A7E; }
+.placard-sub { font-size: 24px; font-weight: 700; color: #A93226; letter-spacing: .1em; margin-top: .1in; }
+.placard-qr {
+  width: 4.2in; height: 4.2in; margin: .22in auto;
+  border: 3px solid #201f1e; border-radius: 10px; padding: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: #fff;
+}
+.placard-qr svg { width: 100%; height: 100%; display: block; }
+.placard-cta { font-size: 30px; font-weight: 800; line-height: 1.15; }
+.placard-steps {
+  text-align: left; font-size: 18px; line-height: 1.5;
+  margin: .18in 0 0; padding-left: 1.3em; max-width: 6.2in;
+}
+/* `.placard-rule` - the amber warning boxes - was deleted 2026-07-30 with the
+   two rules it styled. Left as a comment rather than an orphan rule: a
+   stylesheet block with nothing using it reads as load-bearing to the next
+   person and quietly invites the boxes back onto the sign. See views-placard.js
+   for what they said and why they went. */
+.placard-fallback {
+  margin-top: .18in; font-size: 12px; color: #605e5c;
+  word-break: break-all; max-width: 6.6in;
+}
+
+@media print {
+  @page { size: letter portrait; margin: .4in; }
+
+  .topbar, .protonote, .foot, .toast, .noprint,
+  .viewhead, .note, .cta-row { display: none !important; }
+
+  body { background: #fff; }
+  main { padding: 0; max-width: none; }
+
+  /* The scroll box exists only for phones. Left in place for print it would
+     clip the sheet at the paper edge. */
+  .placard-wrap { overflow: visible; }
+
+  .placard {
+    width: auto; border: 0; border-radius: 0; padding: 0;
+    /* The outline is not a border on purpose: a border participates in layout
+       and can push the last block onto a second sheet. */
+    page-break-inside: avoid;
+  }
+}
