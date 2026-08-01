@@ -97,29 +97,50 @@ DFW.views = DFW.views || {};
     [
       'Point your camera at the code',
       "See what's booked today and this week",
-      'Tap Book the room, pick a start time and an end time',
-      'Pick Every week if it is a standing meeting'
+      /* "Book the room" was the page heading, but the NAV BUTTON is labelled
+         just "Book". Corrected 2026-08-01 after reading the live UI: a printed
+         instruction naming a control that does not exist by that name is the
+         exact failure this comment block warns about. */
+      'Tap Book, pick a start time and an end time',
+      'Pick Every week if it is a standing meeting',
+      /* Added 2026-08-01. Release and takeover were deleted on 07-30, so Cancel
+         is now the ONLY thing that frees a slot early. Unadvertised, the board
+         fills with meetings that are not happening and reads busy when the room
+         is empty. */
+      'Cancel it on the board if your plans change'
     ].forEach(function (s) { steps.appendChild(el('li', { text: s })); });
     sheet.appendChild(steps);
 
-    /* THE TWO WARNING BOXES ARE GONE (2026-07-30, Matias's call).
+    /* THE TWO WARNING BOXES ARE STILL GONE (2026-07-30, Matias's call), AND
+     * ONE OF THEM IS BACK AS A SINGLE LINE (2026-08-01, Matias's call).
      *
      * They were "This board is the room's only schedule - a Teams or Outlook
      * invite does not hold this room" and "One room, so no double-booking".
-     * The sign is now the room name, the QR, four numbered steps and the
-     * fallback URL, and nothing else.
      *
-     * The argument for taking them off: a door sign gets read in about two
-     * seconds by somebody walking past, and every extra block of prose spends
-     * some of that. The scan is the whole job.
+     * The argument for taking them off holds and is why only one came back: a
+     * door sign gets read in about two seconds by somebody walking past, and
+     * every extra block of prose spends some of that. The scan is the whole job.
      *
-     * The cost, so nobody has to rediscover it: the Teams room still exists in
-     * Outlook and will never sync with this board (§2 of CLAUDE.md). The sign
-     * no longer says which schedule wins, so that has to be told to the crew
-     * some other way - in the rollout message, not on the door.
+     * The second box stayed off. "One room, so no double-booking" describes
+     * something the app already enforces - taken start chips are disabled and
+     * submit re-checks - so a person cannot get it wrong and does not need
+     * telling.
      *
-     * If either ever comes back, it goes in as ONE line, not two boxes.
+     * The first one came back because it is the opposite case: nothing in the
+     * app can enforce it. The Teams room resource still exists in Outlook and
+     * will never sync with this board (§2 of CLAUDE.md), so somebody can send a
+     * Teams invite, get an accept, and arrive to find another crew in the room.
+     * Software cannot catch that; only the sign can.
+     *
+     * ONE line, per the instruction left here on 07-30. Not a box, no amber
+     * fill. If it ever grows back into a box, re-read this whole comment first.
      */
+    sheet.appendChild(el('div', { class: 'placard-only' }, [
+      document.createTextNode(
+        'This board is the only schedule for this room. ' +
+        'An Outlook or Teams invite does not hold it.')
+    ]));
+
     sheet.appendChild(el('div', { class: 'placard-fallback' }, [
       el('strong', { text: 'No camera? ' }),
       document.createTextNode('Open this in your browser: ' + url)
