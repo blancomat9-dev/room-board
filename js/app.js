@@ -221,10 +221,16 @@ window.DFW = window.DFW || {};
     if (!n) return;
     ui.clear(n);
     if (SHARED) {
+      /* IN SERVICE 2026-08-01 (Matias). The trailing sentence here read "Still
+         sample data - not in service yet" and came off when the board went
+         live. It was doubly wrong by then: the seeded A-F bookings only ever
+         existed on the localStorage path, so the SHARED board never held
+         sample data at all - measured at 2 rows, one real phone test and one
+         cancelled probe. A banner that tells people their bookings do not
+         count is the fastest way to make sure nobody uses the thing. */
       n.appendChild(el('strong', { text: 'Shared board.' }));
       n.appendChild(document.createTextNode(
-        ' Bookings are visible on every device that opens this page. Still ' +
-        'sample data - not in service yet.'));
+        ' Bookings are visible on every device that opens this page.'));
     } else {
       n.appendChild(el('strong', { text: 'Prototype.' }));
       n.appendChild(document.createTextNode(

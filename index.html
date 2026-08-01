@@ -47,9 +47,18 @@
      hard-code a claim about syncing here: on 2026-07-29 this line said "stored
      in this browser" for hours after that stopped being the whole story, and a
      stale reassurance is worse than none (vault CLAUDE.md section 12).
-     The text below is the conservative case - what is true if JS never runs. -->
+     The text below is the conservative case - what is true if JS never runs.
+
+     It said "Prototype. Not in service yet." until 2026-08-01, and that is the
+     same mistake a second time: it survived the board going into service
+     because writeNote() overwrites it, so nobody ever SAW it be wrong. It is
+     visible in exactly one situation - JS failing - and it would then have told
+     a crew member at a door that a live board was not real.
+     The rule this settles: markup that is normally overwritten still has to be
+     true, because the moment it shows is the moment everything else broke.
+     It now describes the only state in which it is ever read. -->
 <div class="protonote" id="protonote">
-  <strong>Prototype.</strong> Not in service yet.
+  <strong>Loading.</strong> If this does not change in a moment, the board did not load - reopen the page.
 </div>
 
 <main id="view" tabindex="-1"></main>
