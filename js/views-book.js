@@ -136,8 +136,12 @@ DFW.views = DFW.views || {};
       buffer: 0,
       type: 'Standard',
       weekly: false,
-      weeks: cfg.DEFAULT_REPEAT_WEEKS,
-      allHours: false
+      weeks: cfg.DEFAULT_REPEAT_WEEKS
+      /* `allHours` was here until 2026-08-01. It tracked whether the grid was
+         showing the 6-18 band or the full day; the band is now always the full
+         day, so it could only ever hold one value. Removed rather than pinned
+         to false - a field that cannot vary invites the next reader to add a
+         branch on it. */
     };
 
     /* Arriving from a day that was already being looked at. #/book?d=YYYY-MM-DD
@@ -149,7 +153,11 @@ DFW.views = DFW.views || {};
     var STEP = cfg.SLOT_MINS * 60000;
 
     function defaultStart() {
-      var dayStart = new Date(sel.day).setHours(cfg.DAY_START_HOUR, 0, 0, 0);
+      /* DEFAULT_START_HOUR, not DAY_START_HOUR. Since the band went 24/7 the
+         latter is midnight, and opening tomorrow's form on 00:00 would put
+         every ordinary booking six hours of scrolling away. Display default
+         only - midnight is still bookable, it is just not where you land. */
+      var dayStart = new Date(sel.day).setHours(cfg.DEFAULT_START_HOUR, 0, 0, 0);
       if (!U.sameDay(sel.day, now)) return dayStart;
       var n = U.nextSlot(now);
       /* Late enough in the evening that the next slot is tomorrow. Clamp to
@@ -161,25 +169,20 @@ DFW.views = DFW.views || {};
       return n > dayStart ? n : dayStart;
     }
 
-    /* A start carried over from another day, or arrived at through the date
-       field, can sit outside the working band. Left alone it draws a grid with
-       NO chip lit while the read-out above confidently states a time, so the
-       band widens to swallow it. Called before anything reads bandEnd(), which
-       depends on the answer. */
-    function widenBandIfNeeded() {
-      if (sel.start === null || sel.allHours) return;
-      var h = new Date(sel.start).getHours();
-      if (h < cfg.DAY_START_HOUR || h >= cfg.DAY_END_HOUR) sel.allHours = true;
-    }
+    /* `widenBandIfNeeded` lived here until 2026-08-01. It existed because a
+       start carried over from another day could sit outside the 6-18 band and
+       draw a grid with no chip lit while the read-out confidently stated a
+       time. With the band at a full 0-24 no start can fall outside it, so the
+       function was provably dead - every hour is 0..23, which is never < 0 and
+       never >= 24 - and it went rather than being left as a no-op that reads
+       as load-bearing.
 
-    /* The last END the grid can offer. Inclusive where the START grid is
+       The last END the grid can offer. Inclusive where the START grid is
        exclusive, and that asymmetry is correct: a meeting that finishes at
-       6 PM finishes inside a working day that closes at 6, but one that starts
-       at 6 PM does not begin inside it. */
+       midnight finishes inside the day, but one that starts at midnight
+       belongs to the next one. */
     function bandEnd() {
-      widenBandIfNeeded();
-      var hi = sel.allHours ? 24 : cfg.DAY_END_HOUR;
-      return new Date(sel.day).setHours(hi, 0, 0, 0);
+      return new Date(sel.day).setHours(cfg.DAY_END_HOUR, 0, 0, 0);
     }
 
     function durMs() {
@@ -232,7 +235,7 @@ DFW.views = DFW.views || {};
      * when a taken slot was merely dashed, a dead end now that it is disabled.
      */
     function firstFreeFrom(t) {
-      var last = new Date(sel.day).setHours(sel.allHours ? 24 : cfg.DAY_END_HOUR, 0, 0, 0);
+      var last = new Date(sel.day).setHours(cfg.DAY_END_HOUR, 0, 0, 0);
       var floor = U.sameDay(sel.day, now) ? U.floorToSlot(now) : -Infinity;
       for (var s = t; s < last; s += STEP) {
         if (s >= floor && !slotTaken(s)) return s;
@@ -249,6 +252,25 @@ DFW.views = DFW.views || {};
      */
     function endLimit() {
       var last = bandEnd();
+      var capped = false;
+
+      /* THE 12-HOUR CAP, added 2026-08-01 with 24/7 booking.
+       *
+       * Postgres refuses `ends_at - starts_at > interval '12 hours'`
+       * (bookings_max_length in backend/schema.sql). Under the old 6-18 band
+       * the widest selectable booking was 6 AM to 6 PM - exactly 12 hours - so
+       * the form could not produce a row the database would reject, and the
+       * two agreed BY ACCIDENT rather than by design. Opening the band to a
+       * full 24 hours removed that coincidence: midnight to midnight is 24
+       * hours and Postgres would have refused it at submit, after the meeting
+       * title and the name had been typed, with a constraint error.
+       *
+       * Enforced here rather than validated at submit for the reason given on
+       * fixEnd: what the form OFFERS and what it will ACCEPT must not diverge.
+       */
+      var cap = sel.start + cfg.MAX_BOOKING_HOURS * 3600000;
+      if (cap < last) { last = cap; capped = true; }
+
       var blocker = null;
       (rows || []).forEach(function (r) {
         if (!ui.holdsRoom(r)) return;
@@ -256,8 +278,9 @@ DFW.views = DFW.views || {};
         if (s === null || s <= sel.start || s >= last) return;
         last = s;
         blocker = r;
+        capped = false;   /* a real meeting is the nearer limit; name it instead */
       });
-      return { at: last, blocker: blocker };
+      return { at: last, blocker: blocker, capped: capped };
     }
 
     /* Land on a day. Keeps the clock time already chosen where it can, snaps
@@ -283,7 +306,11 @@ DFW.views = DFW.views || {};
 
       var free = firstFreeFrom(want);
       if (free === null) {
-        free = firstFreeFrom(new Date(t).setHours(sel.allHours ? 0 : cfg.DAY_START_HOUR, 0, 0, 0));
+        /* Second sweep from the very start of the day. `want` may be 6 AM (the
+           display default) while 2 AM is free, so this is what makes "nothing
+           free on this day" an honest statement about all 24 hours rather than
+           about the hours the form happened to open on. */
+        free = firstFreeFrom(new Date(t).setHours(cfg.DAY_START_HOUR, 0, 0, 0));
       }
       if (free === null) { sel.start = null; sel.end = null; return; }
       setStart(free);
@@ -456,25 +483,20 @@ DFW.views = DFW.views || {};
 
     function drawSlots() {
       ui.clear(slotHolder);
-      widenBandIfNeeded();
 
-      var loH = sel.allHours ? 0 : cfg.DAY_START_HOUR;
-      var hiH = sel.allHours ? 24 : cfg.DAY_END_HOUR;
+      var loH = cfg.DAY_START_HOUR;
+      var hiH = cfg.DAY_END_HOUR;
       var isToday = U.sameDay(sel.day, now);
 
-      var band = el('div', { class: 'slotband' }, [
-        el('span', {
-          text: sel.allHours ? 'All 24 hours'
-                             : U.fmtClock(new Date(sel.day).setHours(loH, 0, 0, 0)) + ' to ' +
-                               U.fmtClock(new Date(sel.day).setHours(hiH, 0, 0, 0))
-        }),
-        el('button', {
-          type: 'button', class: 'btn btn-sm btn-quiet',
-          text: sel.allHours ? 'Working hours' : 'All hours',
-          onclick: function () { sel.allHours = !sel.allHours; fixEnd(); draw(); }
-        })
-      ]);
-      slotHolder.appendChild(band);
+      /* Was a band read-out plus an "All hours" / "Working hours" toggle. Both
+         went 2026-08-01 with the 6-18 band: the toggle could no longer change
+         what the grid showed, and a dead control on a form is the MB016 lesson
+         repeated. A plain statement replaces it, because 96 chips opening
+         mid-morning needs to say why - otherwise the grid looks like it starts
+         at 6 and the earlier hours look missing rather than scrolled past. */
+      slotHolder.appendChild(el('div', { class: 'slotband' }, [
+        el('span', { text: 'Any time, any day. Scroll for earlier or later.' })
+      ]));
 
       var grid = el('div', { class: 'chipgrid', role: 'group', 'aria-label': 'Start time' });
       var first = new Date(sel.day).setHours(loH, 0, 0, 0);
@@ -521,14 +543,11 @@ DFW.views = DFW.views || {};
       scrollTo(wrap, selectedChip);
 
       /* Say it rather than presenting a grid of dead chips and letting someone
-         work it out. Only within the working band - "All hours" is right there
-         in the band row above and may well have room. */
+         work it out. The band is the whole day now, so this is unambiguous:
+         there is no narrower view left to suggest. */
       if (!anyFree) {
         slotHolder.appendChild(el('div', { class: 'hint', text:
-          sel.allHours
-            ? 'Every slot on this day is taken or gone. Try another day.'
-            : 'Nothing free between ' + U.fmtClock(first) + ' and ' + U.fmtClock(last) +
-              '. Try another day, or All hours.' }));
+          'Every slot on this day is taken or already gone. Try another day.' }));
       }
     }
 
@@ -583,6 +602,14 @@ DFW.views = DFW.views || {};
         endHolder.appendChild(el('div', { class: 'hint', text:
           'Has to end by ' + U.fmtClock(lim.at) + ' - ' +
           (U.id(lim.blocker.title) || 'another booking') + ' has the room after that.' }));
+      } else if (lim.capped) {
+        /* Say why the grid stops, or a 12-hour ceiling looks like a bug. The
+           blocker message above sets the precedent: a grid that ends without
+           explaining itself sends people hunting for the chip they think is
+           missing. */
+        endHolder.appendChild(el('div', { class: 'hint', text:
+          'Has to end by ' + U.fmtClock(lim.at) + ' - one booking can run ' +
+          cfg.MAX_BOOKING_HOURS + ' hours at most. Book the rest as a second one.' }));
       }
     }
 
@@ -670,7 +697,7 @@ DFW.views = DFW.views || {};
         live.appendChild(el('div', { class: 'note note-bad' }, [
           el('strong', { text: 'Nothing free on this day. ' }),
           document.createTextNode(
-            'Pick another day above, or tap All hours if the meeting can sit outside 6 to 6.')
+            'Every hour of this day is taken or already gone. Pick another day above.')
         ]));
         return;
       }

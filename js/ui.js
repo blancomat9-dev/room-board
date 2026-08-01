@@ -371,8 +371,14 @@ window.DFW = window.DFW || {};
   /* The hour window a set of bookings needs on a given day, clamped to a real
      clock. Exported so WEEK can take the union across all seven days and hand
      the same window to every column. */
+  /* DISPLAY_* and not DAY_*, since 2026-08-01. The bookable band is now the
+     full 24 hours, so seeding this from it would draw every day as a 24-hour
+     column - 21 empty hours around three meetings, on a phone, for the one
+     question the board exists to answer. This seeds the readable window and
+     the loop below still widens it to include anything genuinely booked, so a
+     2 AM meeting is drawn; only empty hours are ever hidden. */
   function hourRange(list, base) {
-    var lo = DFW.CONFIG.DAY_START_HOUR, hi = DFW.CONFIG.DAY_END_HOUR;
+    var lo = DFW.CONFIG.DEFAULT_START_HOUR, hi = DFW.CONFIG.DISPLAY_END_HOUR;
     (list || []).forEach(function (b) {
       if (isAllDay(b)) return;
       var s = U.parseTime(b.start), e = U.parseTime(b.end);
@@ -395,9 +401,12 @@ window.DFW = window.DFW || {};
                     .slice()
                     .sort(function (a, b) { return U.parseTime(a.start) - U.parseTime(b.start); });
 
-    /* The window is the configured working day, widened to swallow anything
-       booked outside it. A 6:30am huddle must not be clipped off the top just
-       because the configured day starts at 6.
+    /* The window is CONFIG.DEFAULT_START_HOUR to DISPLAY_END_HOUR, widened to
+       swallow anything booked outside it. Since booking went 24/7 on
+       2026-08-01 this is purely a readability default: a 2 AM meeting is drawn
+       because the widening below reaches it, and only EMPTY hours are ever
+       left off. A 5:30am huddle must not be clipped off the top just because
+       the display window opens at 6.
 
        opts.lo/opts.hi override it. WEEK MUST pass them: seven columns each
        sizing themselves to their own bookings would each be individually

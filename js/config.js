@@ -62,12 +62,39 @@ window.DFW = window.DFW || {};
      * still works; changing it to 7 does not, and nothing here will stop you. */
     SLOT_MINS: 15,
 
-    /* Working day the slot grid covers by default. A person who genuinely
-       needs 5:30 AM taps "All hours" in the form and gets the full 24.
-       OPEN ITEM: 6:00-18:00 came from the MB015 flow spec as an example and
-       was explicitly never confirmed with the crew. */
-    DAY_START_HOUR: 6,
-    DAY_END_HOUR: 18,
+    /* THE BOOKABLE BAND. 24/7 as of 2026-08-01 (Matias): every hour of every
+       day is bookable, so these are 0 and 24 and the start grid offers all 96
+       quarter-hours.
+       This retires the 6:00-18:00 working day, which came from the MB015 flow
+       spec as an example and was never confirmed with the crew - it was an
+       unverified guess restricting real work, which is the worst combination.
+       It also retired the "All hours" toggle in the booking form: with nothing
+       outside the band there was nothing for it to reveal, and a control that
+       cannot change what you see is worse than no control. */
+    DAY_START_HOUR: 0,
+    DAY_END_HOUR: 24,
+
+    /* DISPLAY ONLY. Nothing here restricts what can be booked.
+     *
+     * Two jobs, both about not making a 24-hour day unreadable:
+     *  - the booking form opens here on a day that is not today, so tapping
+     *    Book for tomorrow lands on 6 AM rather than on midnight
+     *  - the Day and Week timelines draw this window by default
+     *
+     * The timelines EXPAND past it to fit anything actually booked (see
+     * ui.hourRange), so a 2 AM meeting is always drawn. Narrowing this hides
+     * empty hours, never a booking. */
+    DEFAULT_START_HOUR: 6,
+    DISPLAY_END_HOUR: 18,
+
+    /* Longest single booking, in hours. MUST MATCH the `bookings_max_length`
+       constraint in backend/schema.sql, which refuses
+       `ends_at - starts_at > interval '12 hours'`. Raising it here alone does
+       not raise it in the database - it just moves the refusal from the end
+       grid, where it explains itself, to the submit button, where it arrives
+       as a Postgres constraint error after the form has been filled in.
+       Change both, in the database first. */
+    MAX_BOOKING_HOURS: 12,
 
     /* How often the board recomputes itself. The SharePoint version evaluated
        @now only at page load, so a page left open on a wall display went stale
