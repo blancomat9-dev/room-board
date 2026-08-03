@@ -114,8 +114,11 @@ DFW.views = DFW.views || {};
      the only guarantee left once the list is gone. */
   function nameInput(id, value) {
     return el('input', {
+      /* Placeholder removed 2026-08-01 with the other two. `autocomplete` and
+         `autocapitalize` stay - they are behaviour, not text, and dropping
+         them would cost a phone keyboard its name suggestion for no gain. */
       type: 'text', id: id, name: id, value: value || '',
-      placeholder: 'Your name', autocomplete: 'name', autocapitalize: 'words'
+      autocomplete: 'name', autocapitalize: 'words'
     });
   }
 
@@ -367,8 +370,14 @@ DFW.views = DFW.views || {};
       el('h1', { text: 'Book the room' })
     ]));
 
-    var fTitle = textInput('title', '', 'Coordination sync');
-    var fDetails = textArea('details', 'Agenda, who should be there, anything the room needs.');
+    /* No placeholders and no hints on these three, 2026-08-01 (Matias). The
+       labels carry the whole job now. Placeholders were dropped along with the
+       hint lines rather than kept as examples: a grey example inside an empty
+       box is read as a filled-in value often enough to matter, and the three
+       labels - Meeting title, Description, Your name - are not questions that
+       need worked examples. */
+    var fTitle = textInput('title', '');
+    var fDetails = textArea('details');
     var fWho = nameInput('who');
 
     var readout = el('div', { class: 'readout' });
@@ -752,13 +761,17 @@ DFW.views = DFW.views || {};
              the person already has an answer to when they tap Book, and
              leading with the name field makes the form read as a sign-in
              sheet instead. */
-          field('Meeting title', fTitle, 'Short. This is what shows on the board and the door.', true),
-          /* Optional, and it says so. A required description would get "mtg"
-             typed into it by everyone in a hurry, which is worse than blank -
-             blank is honest and "mtg" is noise that looks like content. */
-          field('Description', fDetails,
-                'Optional. Agenda, who should be there, anything the room needs set up.'),
-          field('Your name', fWho, 'No sign-in here, so the board shows exactly what you type.', true),
+          field('Meeting title', fTitle, null, true),
+          /* Description is still OPTIONAL and the hint that said so is gone
+             with the other two. The asterisk carries it instead: Meeting title
+             and Your name are marked required, Description is not, so the
+             difference is still on screen - it is just shown rather than
+             explained. The reason it must stay optional is unchanged: a
+             required description gets "mtg" typed into it by everyone in a
+             hurry, and "mtg" is noise that looks like content, where blank is
+             honest. */
+          field('Description', fDetails),
+          field('Your name', fWho, null, true),
           dayField,
           chipField('Start time', slotHolder,
                     'Every 15 minutes. Dimmed and dashed means it is already booked - ' +
